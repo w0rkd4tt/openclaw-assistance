@@ -218,10 +218,42 @@ setup_local_bot() {
     # Cài Python dependencies
     if [[ -f "$SCRIPT_DIR/requirements.txt" ]]; then
         info "Cài đặt Python dependencies..."
-        if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
-            python3 -m venv "$SCRIPT_DIR/.venv"
+
+        # Đảm bảo python3 có sẵn
+        if ! command -v python3 &>/dev/null; then
+            warn "python3 chưa được cài. Đang cài đặt..."
+            if [[ "$OS" == "linux" ]]; then
+                sudo apt-get update -qq
+                sudo apt-get install -y python3 python3-venv python3-pip
+            else
+                brew install python3
+            fi
         fi
+
+        # Trên Debian/Ubuntu, cần python3-venv riêng
+        if [[ "$OS" == "linux" ]] && ! python3 -m venv --help &>/dev/null; then
+            warn "python3-venv chưa được cài. Đang cài đặt..."
+            sudo apt-get update -qq
+            sudo apt-get install -y python3-venv python3-pip
+        fi
+
+        # Tạo venv nếu chưa có hoặc bị lỗi
+        if [[ ! -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
+            rm -rf "$SCRIPT_DIR/.venv"
+            info "Tạo Python venv tại $SCRIPT_DIR/.venv..."
+            if ! python3 -m venv "$SCRIPT_DIR/.venv"; then
+                err "Không tạo được venv. Hãy cài python3-venv: sudo apt install python3-venv"
+            fi
+        fi
+
+        # Kiểm tra activate script thực sự tồn tại
+        if [[ ! -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
+            err "venv được tạo nhưng thiếu activate script. Hãy xóa $SCRIPT_DIR/.venv và chạy lại."
+        fi
+
+        # shellcheck disable=SC1091
         source "$SCRIPT_DIR/.venv/bin/activate"
+        pip install -q --upgrade pip
         pip install -q -r "$SCRIPT_DIR/requirements.txt"
         log "Python dependencies đã sẵn sàng."
     fi
