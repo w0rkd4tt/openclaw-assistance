@@ -46,8 +46,9 @@ get_cpu_info() {
 # ============================================================
 get_ram_info() {
     if [[ "$OS" == "macos" ]]; then
-        RAM_TOTAL_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
-        RAM_TOTAL_GB=$(echo "scale=1; $RAM_TOTAL_BYTES / 1024 / 1024 / 1024" | bc 2>/dev/null || echo "?")
+        local ram_bytes
+        ram_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+        RAM_TOTAL_GB=$(awk "BEGIN {printf \"%.1f\", $ram_bytes / 1024 / 1024 / 1024}")
         # Available memory on macOS
         local pages_free pages_inactive page_size
         page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
@@ -55,12 +56,13 @@ get_ram_info() {
         pages_inactive=$(vm_stat 2>/dev/null | grep "Pages inactive" | awk '{print $3}' | tr -d '.')
         pages_free=${pages_free:-0}
         pages_inactive=${pages_inactive:-0}
-        RAM_AVAIL_GB=$(echo "scale=1; ($pages_free + $pages_inactive) * $page_size / 1024 / 1024 / 1024" | bc 2>/dev/null || echo "?")
+        RAM_AVAIL_GB=$(awk "BEGIN {printf \"%.1f\", ($pages_free + $pages_inactive) * $page_size / 1024 / 1024 / 1024}")
     else
-        RAM_TOTAL_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
-        RAM_TOTAL_GB=$(echo "scale=1; $RAM_TOTAL_KB / 1024 / 1024" | bc 2>/dev/null || echo "?")
-        RAM_AVAIL_KB=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
-        RAM_AVAIL_GB=$(echo "scale=1; $RAM_AVAIL_KB / 1024 / 1024" | bc 2>/dev/null || echo "?")
+        local ram_total_kb ram_avail_kb
+        ram_total_kb=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
+        ram_avail_kb=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
+        RAM_TOTAL_GB=$(awk "BEGIN {printf \"%.1f\", $ram_total_kb / 1024 / 1024}")
+        RAM_AVAIL_GB=$(awk "BEGIN {printf \"%.1f\", $ram_avail_kb / 1024 / 1024}")
     fi
 }
 
@@ -83,7 +85,7 @@ get_gpu_info() {
             GPU_NAME=$(system_profiler SPDisplaysDataType 2>/dev/null | grep "Chipset Model" | head -1 | cut -d: -f2 | xargs || echo "Unknown")
             local vram
             vram=$(system_profiler SPDisplaysDataType 2>/dev/null | grep "VRAM" | head -1 | grep -oE '[0-9]+' || echo "0")
-            GPU_VRAM_GB=$(echo "scale=1; ${vram:-0} / 1024" | bc 2>/dev/null || echo "0")
+            GPU_VRAM_GB=$(awk "BEGIN {printf \"%.1f\", ${vram:-0} / 1024}")
             [[ "$GPU_VRAM_GB" != "0" ]] && HAS_GPU=true
             GPU_TYPE="other"
         fi
@@ -93,7 +95,7 @@ get_gpu_info() {
             GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown NVIDIA")
             local vram_mb
             vram_mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "0")
-            GPU_VRAM_GB=$(echo "scale=1; ${vram_mb:-0} / 1024" | bc 2>/dev/null || echo "0")
+            GPU_VRAM_GB=$(awk "BEGIN {printf \"%.1f\", ${vram_mb:-0} / 1024}")
             HAS_GPU=true
             GPU_TYPE="nvidia"
 
@@ -104,7 +106,7 @@ get_gpu_info() {
             GPU_NAME=$(rocm-smi --showproductname 2>/dev/null | grep "Card" | head -1 | awk -F: '{print $2}' | xargs || echo "Unknown AMD")
             local vram_mb
             vram_mb=$(rocm-smi --showmeminfo vram 2>/dev/null | grep "Total" | awk '{print $3}' || echo "0")
-            GPU_VRAM_GB=$(echo "scale=1; ${vram_mb:-0} / 1024 / 1024" | bc 2>/dev/null || echo "0")
+            GPU_VRAM_GB=$(awk "BEGIN {printf \"%.1f\", ${vram_mb:-0} / 1024 / 1024}")
             HAS_GPU=true
             GPU_TYPE="amd"
         fi
@@ -147,13 +149,13 @@ suggest_models() {
     local usable_ram
     if [[ "$HAS_GPU" == true && "$GPU_TYPE" == "nvidia" ]]; then
         # GPU NVIDIA: dùng VRAM
-        usable_ram=$(echo "$GPU_VRAM_GB" | bc 2>/dev/null || echo "0")
+        usable_ram=$(awk "BEGIN {printf \"%.1f\", $GPU_VRAM_GB}")
     elif [[ "$HAS_GPU" == true && "$GPU_TYPE" == "apple" ]]; then
         # Apple Silicon: unified memory, trừ 4GB cho hệ thống
-        usable_ram=$(echo "$RAM_TOTAL_GB - 4" | bc 2>/dev/null || echo "0")
+        usable_ram=$(awk "BEGIN {printf \"%.1f\", $RAM_TOTAL_GB - 4}")
     else
         # CPU only: dùng RAM, trừ 3GB cho hệ thống
-        usable_ram=$(echo "$RAM_TOTAL_GB - 3" | bc 2>/dev/null || echo "0")
+        usable_ram=$(awk "BEGIN {printf \"%.1f\", $RAM_TOTAL_GB - 3}")
     fi
 
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -201,7 +203,7 @@ suggest_models() {
         local status=""
         local color=""
         local fits
-        fits=$(echo "$usable_ram >= $ram" | bc 2>/dev/null || echo "0")
+        fits=$(awk "BEGIN {print ($usable_ram >= $ram) ? 1 : 0}")
 
         if [[ "$fits" == "1" ]]; then
             # Kiểm tra đã cài chưa
@@ -280,10 +282,10 @@ print_report() {
     # RAM bar
     if [[ "$RAM_TOTAL_GB" != "?" && "$RAM_AVAIL_GB" != "?" ]]; then
         local used pct bar_len filled empty
-        used=$(echo "$RAM_TOTAL_GB - $RAM_AVAIL_GB" | bc 2>/dev/null || echo "0")
-        pct=$(echo "scale=0; $used * 100 / $RAM_TOTAL_GB" | bc 2>/dev/null || echo "0")
+        used=$(awk "BEGIN {printf \"%.1f\", $RAM_TOTAL_GB - $RAM_AVAIL_GB}")
+        pct=$(awk "BEGIN {printf \"%d\", $used * 100 / $RAM_TOTAL_GB}")
         bar_len=40
-        filled=$(echo "scale=0; $pct * $bar_len / 100" | bc 2>/dev/null || echo "0")
+        filled=$(awk "BEGIN {printf \"%d\", $pct * $bar_len / 100}")
         empty=$((bar_len - filled))
 
         local bar_color="${GREEN}"
