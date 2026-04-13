@@ -34,46 +34,46 @@ GGUF_PATH=""         # Đường dẫn đến file GGUF
 TEMPLATE_TYPE=""     # chatml | llama3 | mistral
 
 # ============================================================
-#  Preset models HuggingFace
+#  Preset models
+#  SOURCE: "ollama" = pull từ registry, "hf" = tải GGUF từ HuggingFace
 # ============================================================
-declare -A PRESETS_REPO PRESETS_FILE PRESETS_TEMPLATE PRESETS_DESC
+declare -A PRESETS_SOURCE PRESETS_OLLAMA PRESETS_REPO PRESETS_FILE PRESETS_TEMPLATE PRESETS_DESC
 
-PRESETS_REPO[qwen2.5-14b-abliterated]="huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2-GGUF"
-PRESETS_FILE[qwen2.5-14b-abliterated]="qwen2.5-14b-instruct-abliterated-v2.Q4_K_M.gguf"
-PRESETS_TEMPLATE[qwen2.5-14b-abliterated]="chatml"
-PRESETS_DESC[qwen2.5-14b-abliterated]="Qwen2.5 14B Abliterated v2 (uncensored, ~9GB)"
+# --- Ollama registry presets (nhanh, recommended) ---
+PRESETS_SOURCE[qwen2.5-14b-abliterated]="ollama"
+PRESETS_OLLAMA[qwen2.5-14b-abliterated]="huihui_ai/qwen2.5-abliterate:14b"
+PRESETS_DESC[qwen2.5-14b-abliterated]="Qwen2.5 14B Abliterated (Ollama, ~9GB)"
 
-PRESETS_REPO[qwen2.5-7b-abliterated]="huihui-ai/Qwen2.5-7B-Instruct-abliterated-v2-GGUF"
-PRESETS_FILE[qwen2.5-7b-abliterated]="qwen2.5-7b-instruct-abliterated-v2.Q4_K_M.gguf"
-PRESETS_TEMPLATE[qwen2.5-7b-abliterated]="chatml"
-PRESETS_DESC[qwen2.5-7b-abliterated]="Qwen2.5 7B Abliterated v2 (uncensored, ~5GB)"
+PRESETS_SOURCE[qwen2.5-7b-abliterated]="ollama"
+PRESETS_OLLAMA[qwen2.5-7b-abliterated]="huihui_ai/qwen2.5-abliterate:7b"
+PRESETS_DESC[qwen2.5-7b-abliterated]="Qwen2.5 7B Abliterated (Ollama, ~5GB)"
 
-PRESETS_REPO[qwen2.5-32b-abliterated]="huihui-ai/Qwen2.5-32B-Instruct-abliterated-v2-GGUF"
-PRESETS_FILE[qwen2.5-32b-abliterated]="qwen2.5-32b-instruct-abliterated-v2.Q4_K_M.gguf"
-PRESETS_TEMPLATE[qwen2.5-32b-abliterated]="chatml"
-PRESETS_DESC[qwen2.5-32b-abliterated]="Qwen2.5 32B Abliterated v2 (uncensored, ~19GB)"
+PRESETS_SOURCE[qwen2.5-32b-abliterated]="ollama"
+PRESETS_OLLAMA[qwen2.5-32b-abliterated]="huihui_ai/qwen2.5-abliterate:32b"
+PRESETS_DESC[qwen2.5-32b-abliterated]="Qwen2.5 32B Abliterated (Ollama, ~19GB)"
 
-PRESETS_REPO[deepseek-r1-14b-abliterated]="huihui-ai/DeepSeek-R1-Distill-Qwen-14B-abliterated-v2-GGUF"
-PRESETS_FILE[deepseek-r1-14b-abliterated]="DeepSeek-R1-Distill-Qwen-14B-abliterated-v2.Q4_K_M.gguf"
-PRESETS_TEMPLATE[deepseek-r1-14b-abliterated]="chatml"
-PRESETS_DESC[deepseek-r1-14b-abliterated]="DeepSeek R1 14B Abliterated v2 (~9GB)"
+PRESETS_SOURCE[deepseek-r1-14b-abliterated]="ollama"
+PRESETS_OLLAMA[deepseek-r1-14b-abliterated]="huihui_ai/deepseek-r1-abliterate:14b"
+PRESETS_DESC[deepseek-r1-14b-abliterated]="DeepSeek R1 14B Abliterated (Ollama, ~9GB)"
 
-PRESETS_REPO[llama3-8b-abliterated]="mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF"
-PRESETS_FILE[llama3-8b-abliterated]="meta-llama-3.1-8b-instruct-abliterated.Q4_K_M.gguf"
-PRESETS_TEMPLATE[llama3-8b-abliterated]="llama3"
-PRESETS_DESC[llama3-8b-abliterated]="Llama 3.1 8B Abliterated (~5GB)"
+PRESETS_SOURCE[mistral-7b-abliterated]="ollama"
+PRESETS_OLLAMA[mistral-7b-abliterated]="huihui_ai/mistral-abliterate:7b"
+PRESETS_DESC[mistral-7b-abliterated]="Mistral 7B Abliterated (Ollama, ~4GB)"
 
-PRESETS_REPO[mistral-7b-abliterated]="huihui-ai/Mistral-7B-Instruct-v0.3-abliterated-v3-GGUF"
-PRESETS_FILE[mistral-7b-abliterated]="mistral-7b-instruct-v0.3-abliterated-v3.Q4_K_M.gguf"
-PRESETS_TEMPLATE[mistral-7b-abliterated]="mistral"
-PRESETS_DESC[mistral-7b-abliterated]="Mistral 7B Abliterated v3 (~4GB)"
+# --- HuggingFace GGUF presets ---
+PRESETS_SOURCE[llama3-8b-abliterated-hf]="hf"
+PRESETS_REPO[llama3-8b-abliterated-hf]="mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF"
+PRESETS_FILE[llama3-8b-abliterated-hf]="meta-llama-3.1-8b-instruct-abliterated.Q4_K_M.gguf"
+PRESETS_TEMPLATE[llama3-8b-abliterated-hf]="llama3"
+PRESETS_DESC[llama3-8b-abliterated-hf]="Llama 3.1 8B Abliterated (HuggingFace GGUF, ~5GB)"
 
 PRESET_KEYS=(
     "qwen2.5-14b-abliterated"
     "qwen2.5-7b-abliterated"
     "qwen2.5-32b-abliterated"
     "deepseek-r1-14b-abliterated"
-    "llama3-8b-abliterated"
+    "mistral-7b-abliterated"
+    "llama3-8b-abliterated-hf"
     "mistral-7b-abliterated"
 )
 
@@ -224,10 +224,10 @@ select_model() {
 
     echo -e "${BOLD}  Nguồn model:${NC}"
     echo ""
-    echo "    1) Ollama Registry  (qwen2.5:14b, llama3:8b, ...)"
-    echo "    2) HuggingFace      (preset abliterated models)"
-    echo "    3) HuggingFace      (nhập repo tùy chọn)"
-    echo "    4) File GGUF local  (đã tải sẵn trên máy)"
+    echo "    1) Ollama Registry    (qwen2.5:14b, llama3:8b, ...)"
+    echo "    2) Abliterated preset (uncensored, Ollama/HuggingFace)"
+    echo "    3) HuggingFace repo   (nhập repo tùy chọn)"
+    echo "    4) File GGUF local    (đã tải sẵn trên máy)"
     echo ""
     read -rp "Chọn nguồn [1-4]: " source_choice
 
@@ -266,13 +266,12 @@ select_ollama_model() {
 }
 
 # ============================================================
-#  Chọn HuggingFace preset
+#  Chọn preset (Ollama hoặc HuggingFace)
 # ============================================================
 select_hf_preset() {
-    MODEL_SOURCE="huggingface"
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}  HuggingFace Presets:${NC}"
+    echo -e "${BOLD}  Abliterated Presets:${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
@@ -286,11 +285,21 @@ select_hf_preset() {
 
     if [[ -n "$choice" && "$choice" =~ ^[0-9]+$ && "$choice" -ge 1 && "$choice" -le "${#PRESET_KEYS[@]}" ]]; then
         local key="${PRESET_KEYS[$((choice - 1))]}"
-        HF_REPO="${PRESETS_REPO[$key]}"
-        HF_FILE="${PRESETS_FILE[$key]}"
-        TEMPLATE_TYPE="${PRESETS_TEMPLATE[$key]}"
-        MODEL_NAME="$key"
-        log "Đã chọn: ${PRESETS_DESC[$key]}"
+
+        if [[ "${PRESETS_SOURCE[$key]}" == "ollama" ]]; then
+            # Preset từ Ollama registry → pull trực tiếp
+            MODEL_SOURCE="ollama"
+            MODEL_NAME="${PRESETS_OLLAMA[$key]}"
+            log "Đã chọn (Ollama): ${PRESETS_DESC[$key]}"
+        else
+            # Preset từ HuggingFace → tải GGUF
+            MODEL_SOURCE="huggingface"
+            HF_REPO="${PRESETS_REPO[$key]}"
+            HF_FILE="${PRESETS_FILE[$key]}"
+            TEMPLATE_TYPE="${PRESETS_TEMPLATE[$key]}"
+            MODEL_NAME="$key"
+            log "Đã chọn (HuggingFace): ${PRESETS_DESC[$key]}"
+        fi
     else
         err "Lựa chọn không hợp lệ."
     fi
