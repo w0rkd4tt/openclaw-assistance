@@ -275,3 +275,166 @@ ollama ps   # Cột PROCESSOR hiện 100% GPU hoặc 100% CPU
 ./deploy-model.sh huihui-ai/Qwen2.5-14B-...-GGUF # HuggingFace
 ./deploy-model.sh ~/models/custom.gguf            # File local
 ```
+
+## Troubleshooting
+
+<details>
+<summary>Các lỗi thường gặp và cách fix</summary>
+
+### Gateway: "port already in use" / "gateway already running"
+
+```bash
+# Dừng gateway
+openclaw gateway stop
+
+# Nếu vẫn lỗi, kill process trực tiếp
+kill $(lsof -ti:18789) 2>/dev/null
+# Hoặc
+kill -9 <PID>
+
+# Chạy lại
+openclaw gateway
+```
+
+### Gateway: "gateway.mode is unset"
+
+```bash
+openclaw config set gateway.mode local
+openclaw gateway
+```
+
+### OpenClaw: "Unrecognized key: llm"
+
+Config cũ có key không hợp lệ. Xóa và tạo lại:
+
+```bash
+rm ~/.openclaw/openclaw.json
+./deploy.sh
+```
+
+### OpenClaw: "models.providers.ollama.models: expected array"
+
+Ollama provider cần khai báo models array đầy đủ. Chạy:
+
+```bash
+python3 -c "
+import json, os
+cfg = os.path.expanduser('~/.openclaw/openclaw.json')
+with open(cfg) as f: c = json.load(f)
+c.setdefault('models',{}).setdefault('providers',{})['ollama'] = {
+    'baseUrl':'http://127.0.0.1:11434','apiKey':'ollama-local','api':'ollama',
+    'models':[{'id':'qwen2.5:14b','name':'Qwen2.5 14B','reasoning':False,
+    'input':['text'],'cost':{'input':0,'output':0,'cacheRead':0,'cacheWrite':0},
+    'contextWindow':32768,'maxTokens':32768}]
+}
+with open(cfg,'w') as f: json.dump(c,f,indent=2)
+"
+```
+
+### OpenClaw: "Unknown model: ollama/..." / "OLLAMA_API_KEY"
+
+OpenClaw cần `OLLAMA_API_KEY` để nhận Ollama provider:
+
+```bash
+export OLLAMA_API_KEY=ollama-local
+openclaw gateway
+```
+
+Hoặc lưu vĩnh viễn:
+
+```bash
+echo 'OLLAMA_API_KEY=ollama-local' >> ~/.openclaw/.env
+```
+
+### OpenClaw: "No pending pairing request"
+
+Mã pairing đã hết hạn. Gửi tin nhắn mới trên Telegram để tạo mã mới, hoặc tắt pairing:
+
+```bash
+openclaw config set channels.telegram.dmPolicy open
+openclaw gateway stop && openclaw gateway
+```
+
+### Ollama: "model requires more system memory"
+
+Model quá lớn cho RAM/VRAM hiện tại:
+
+```bash
+# Kiểm tra phần cứng
+./check-hardware.sh
+
+# Chuyển sang model nhỏ hơn
+./deploy-model.sh qwen2.5:14b   # 14B cần ~10GB
+./deploy-model.sh qwen2.5:7b    # 7B cần ~5GB
+```
+
+### Ollama: "could not connect to ollama server"
+
+```bash
+# WSL2 không có systemd → chạy trực tiếp
+ollama serve &
+sleep 2
+ollama run qwen2.5:14b "test"
+```
+
+### WSL2: GPU không được detect
+
+```bash
+# Kiểm tra driver passthrough
+ls /usr/lib/wsl/lib/nvidia-smi && /usr/lib/wsl/lib/nvidia-smi
+
+# Nếu có output → thêm vào PATH
+export PATH=$PATH:/usr/lib/wsl/lib
+
+# Kiểm tra Ollama dùng GPU
+ollama ps
+```
+
+### WSL2: RAM hiện "?GB" trong check-hardware.sh
+
+Script cũ dùng `bc` (không có sẵn trên WSL2). Pull bản mới:
+
+```bash
+git pull
+./check-hardware.sh
+```
+
+### pip: "externally-managed-environment"
+
+Trên Kali/Debian 12+/Ubuntu 24+:
+
+```bash
+pip install --user huggingface-hub
+# Hoặc
+pip install --break-system-packages huggingface-hub
+# Hoặc
+pipx install huggingface-hub
+```
+
+### deploy-model.sh: "Không tìm thấy file GGUF"
+
+- Repo gốc (safetensors) không có GGUF. Script tự thử thêm `-GGUF` suffix
+- Chạy **không có sudo** (sudo dùng root Python, thiếu module):
+
+```bash
+./deploy-model.sh huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2
+# KHÔNG dùng: sudo ./deploy-model.sh
+```
+
+### npm: "EACCES permission denied"
+
+```bash
+sudo npm install -g openclaw@latest
+# Hoặc fix permissions
+sudo chown -R $(whoami) /usr/lib/node_modules/openclaw/
+```
+
+### NVIDIA CUDA repo GPG error trên WSL2
+
+```bash
+# Xóa CUDA repo (WSL2 đã có CUDA sẵn tại /usr/lib/wsl/lib/)
+sudo rm -f /etc/apt/sources.list.d/cuda-wsl-ubuntu-x86_64.list
+sudo apt-get update
+```
+
+</details>
