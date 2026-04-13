@@ -1,11 +1,14 @@
 # OpenClaw Assistant
 
-Telegram bot trò chuyện AI sử dụng model local qua Ollama (mặc định: `qwen2.5:32b`).
+Telegram bot trò chuyện AI sử dụng model local qua Ollama.
 Có 2 chế độ: **OpenClaw gateway** (đầy đủ tính năng) hoặc **bot Python đơn giản**.
 
 ## Quick Start
 
 ```bash
+# Bước 0: Kiểm tra phần cứng & gợi ý model
+./check-hardware.sh
+
 # Bước 1: Deploy Ollama + pull model
 ./deploy-ollama.sh
 
@@ -16,16 +19,24 @@ Có 2 chế độ: **OpenClaw gateway** (đầy đủ tính năng) hoặc **bot 
 Hoặc chỉ định model:
 
 ```bash
-OLLAMA_MODEL=llama3:8b ./deploy-ollama.sh
-OLLAMA_MODEL=llama3:8b ./deploy.sh
+OLLAMA_MODEL=qwen2.5:14b ./deploy-ollama.sh
+OLLAMA_MODEL=qwen2.5:14b ./deploy.sh
 ```
 
 ## Deploy Scripts
 
 | Script | Mục đích |
 |--------|----------|
+| `check-hardware.sh` | Kiểm tra CPU, RAM, GPU, disk & gợi ý model phù hợp |
 | `deploy-ollama.sh` | Cài Ollama, khởi động server, chọn & pull model |
 | `deploy.sh` | Cài OpenClaw, cấu hình Telegram + Ollama, khởi động gateway |
+
+### check-hardware.sh
+
+- Detect CPU, RAM (total/available + progress bar), GPU (NVIDIA/AMD/Apple Silicon)
+- Hỗ trợ WSL2 (detect GPU qua `/usr/lib/wsl/lib/nvidia-smi`)
+- Liệt kê 24 model phổ biến với trạng thái OK/Thiếu RAM
+- Đề xuất model lớn nhất phù hợp với phần cứng
 
 ### deploy-ollama.sh
 
@@ -44,6 +55,43 @@ OLLAMA_MODEL=llama3:8b ./deploy.sh
 - Set `OLLAMA_API_KEY`, `gateway.mode`, `dmPolicy`, model
 - Cài Python venv + dependencies (cho bot đơn giản)
 - Chọn chạy: OpenClaw gateway hoặc bot Python
+
+## Dùng custom model từ HuggingFace
+
+Ví dụ dùng [Qwen2.5-14B-Instruct-abliterated-v2](https://huggingface.co/huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2):
+
+```bash
+# 1. Tải GGUF
+pip install huggingface-hub
+huggingface-cli download huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2-GGUF \
+  qwen2.5-14b-instruct-abliterated-v2.Q4_K_M.gguf \
+  --local-dir ~/models
+
+# 2. Tạo Modelfile
+cat > ~/models/Modelfile <<'EOF'
+FROM ./qwen2.5-14b-instruct-abliterated-v2.Q4_K_M.gguf
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER num_ctx 32768
+TEMPLATE """{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+{{ .Response }}<|im_end|>"""
+SYSTEM "Bạn là OpenClaw Assistant, một trợ lý AI thông minh và thân thiện."
+EOF
+
+# 3. Tạo model trong Ollama
+cd ~/models && ollama create openclaw-14b -f Modelfile
+
+# 4. Test
+ollama run openclaw-14b "xin chào"
+ollama ps  # Kiểm tra GPU usage
+
+# 5. Set làm default cho OpenClaw
+openclaw models set ollama/openclaw-14b
+```
 
 ## Kiến trúc hệ thống
 
@@ -64,7 +112,7 @@ flowchart TB
 
     subgraph Local["Local Machine"]
         Ollama["Ollama Server\nlocalhost:11434"]
-        Model["qwen2.5:32b\nLLM Model"]
+        Model["LLM Model\n(qwen2.5 / llama3 / custom)"]
     end
 
     ENV[".env"] -.->|load| Config
@@ -89,7 +137,7 @@ sequenceDiagram
     participant OC as OllamaClient
     participant History as Conversation History
     participant Ollama as Ollama Server
-    participant LLM as qwen2.5:32b
+    participant LLM as LLM Model
 
     User->>TG: Gửi tin nhắn
     TG->>Bot: Polling nhận Update
@@ -102,7 +150,7 @@ sequenceDiagram
     OC->>OC: Ghép [system_prompt] + history
 
     OC->>Ollama: POST /api/chat {model, messages}
-    Ollama->>LLM: Inference
+    Ollama->>LLM: Inference (GPU/CPU)
     LLM-->>Ollama: Generated response
     Ollama-->>OC: JSON {message: {content}}
 
@@ -138,6 +186,7 @@ flowchart LR
 
 ```
 openclaw-assistance/
+├── check-hardware.sh    # Kiểm tra phần cứng & gợi ý model
 ├── deploy-ollama.sh     # Deploy Ollama + model
 ├── deploy.sh            # Deploy OpenClaw + Telegram
 ├── main.py              # Entry point (bot đơn giản)
@@ -167,7 +216,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 ### 2. Pull model & chạy
 
 ```bash
-ollama pull qwen2.5:32b
+ollama pull qwen2.5:14b
 ollama serve
 ```
 
@@ -198,11 +247,28 @@ export TELEGRAM_BOT_TOKEN=your_token_here
 openclaw config set gateway.mode local
 openclaw config set channels.telegram.enabled true
 openclaw config set channels.telegram.dmPolicy open
-openclaw models set ollama/qwen2.5:32b
+openclaw models set ollama/qwen2.5:14b
 openclaw gateway
 ```
 
 </details>
+
+## GPU Support
+
+Ollama tự detect GPU và ưu tiên chạy trên GPU nếu có.
+
+| Platform | GPU | Ghi chú |
+|----------|-----|---------|
+| Linux | NVIDIA (CUDA) | Tự động |
+| Linux | AMD (ROCm) | Tự động |
+| macOS | Apple Silicon | Unified memory, tự động |
+| WSL2 | NVIDIA passthrough | Cần driver Windows 470+, CUDA lib có sẵn tại `/usr/lib/wsl/lib/` |
+
+Kiểm tra GPU đang được dùng:
+
+```bash
+ollama ps   # Cột PROCESSOR hiện 100% GPU hoặc 100% CPU
+```
 
 ## Sử dụng trên Telegram
 
@@ -214,6 +280,10 @@ openclaw gateway
 ## Đổi model
 
 ```bash
-OLLAMA_MODEL=llama3:8b ./deploy-ollama.sh   # Pull model mới
-openclaw models set ollama/llama3:8b         # Đổi model OpenClaw
+# Model từ Ollama registry
+ollama pull qwen2.5:14b
+openclaw models set ollama/qwen2.5:14b
+
+# Model custom từ HuggingFace (xem phần "Dùng custom model" ở trên)
+openclaw models set ollama/openclaw-14b
 ```
