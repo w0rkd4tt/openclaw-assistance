@@ -90,17 +90,30 @@ get_gpu_info() {
             GPU_TYPE="other"
         fi
     else
-        # NVIDIA
+        # Tìm nvidia-smi (WSL2 đặt tại /usr/lib/wsl/lib/)
+        local nvidia_smi=""
         if command -v nvidia-smi &>/dev/null; then
-            GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown NVIDIA")
+            nvidia_smi="nvidia-smi"
+        elif [[ -x /usr/lib/wsl/lib/nvidia-smi ]]; then
+            nvidia_smi="/usr/lib/wsl/lib/nvidia-smi"
+        fi
+
+        # NVIDIA
+        if [[ -n "$nvidia_smi" ]]; then
+            GPU_NAME=$($nvidia_smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown NVIDIA")
             local vram_mb
-            vram_mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "0")
+            vram_mb=$($nvidia_smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "0")
             GPU_VRAM_GB=$(awk "BEGIN {printf \"%.1f\", ${vram_mb:-0} / 1024}")
             HAS_GPU=true
             GPU_TYPE="nvidia"
 
             # CUDA version
-            CUDA_VERSION=$(nvidia-smi 2>/dev/null | grep -oP "CUDA Version: \K[0-9.]+" || echo "N/A")
+            CUDA_VERSION=$($nvidia_smi 2>/dev/null | grep -oP "CUDA Version: \K[0-9.]+" || echo "N/A")
+
+            # WSL2 detection
+            if grep -qi microsoft /proc/version 2>/dev/null; then
+                GPU_NAME="$GPU_NAME (WSL2 passthrough)"
+            fi
         # AMD ROCm
         elif command -v rocm-smi &>/dev/null; then
             GPU_NAME=$(rocm-smi --showproductname 2>/dev/null | grep "Card" | head -1 | awk -F: '{print $2}' | xargs || echo "Unknown AMD")
