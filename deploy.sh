@@ -18,6 +18,7 @@ err()   { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 info()  { echo -e "${CYAN}[→]${NC} $*"; }
 
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:32b}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ============================================================
 #  1. Kiểm tra OS
@@ -37,6 +38,17 @@ detect_os() {
 install_prerequisites() {
     info "Kiểm tra dependencies..."
 
+    if [[ "$OS" == "linux" ]]; then
+        # Cài các tool cần thiết (lsof cho openclaw gateway diagnostics)
+        local pkgs_needed=()
+        command -v curl &>/dev/null || pkgs_needed+=(curl)
+        command -v lsof &>/dev/null || pkgs_needed+=(lsof)
+        if [[ ${#pkgs_needed[@]} -gt 0 ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y "${pkgs_needed[@]}"
+        fi
+    fi
+
     # Node.js
     if ! command -v node &>/dev/null; then
         warn "Node.js chưa được cài. Đang cài đặt..."
@@ -54,15 +66,6 @@ install_prerequisites() {
         err "npm không tìm thấy. Hãy cài Node.js trước."
     fi
     log "npm $(npm -v)"
-
-    # curl
-    if ! command -v curl &>/dev/null; then
-        if [[ "$OS" == "linux" ]]; then
-            sudo apt-get install -y curl
-        else
-            err "curl không tìm thấy."
-        fi
-    fi
 }
 
 # ============================================================
@@ -84,7 +87,7 @@ install_ollama() {
 }
 
 # ============================================================
-#  4. Khởi động Ollama & pull model
+#  4. Khởi động Ollama & chọn/pull model
 # ============================================================
 start_ollama_and_pull() {
     # Kiểm tra Ollama đang chạy chưa
@@ -95,7 +98,6 @@ start_ollama_and_pull() {
         else
             ollama serve &
         fi
-        OLLAMA_PID=$!
 
         # Đợi server sẵn sàng
         for i in {1..30}; do
@@ -179,7 +181,7 @@ install_openclaw() {
     fi
 
     info "Cài đặt OpenClaw..."
-    npm install -g openclaw@latest
+    sudo npm install -g openclaw@latest
     log "OpenClaw $(openclaw --version 2>/dev/null || echo 'installed')."
 }
 
@@ -189,10 +191,12 @@ install_openclaw() {
 configure_openclaw() {
     OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
     OPENCLAW_ENV="$OPENCLAW_HOME/.env"
+    OPENCLAW_CONFIG="$OPENCLAW_HOME/openclaw.json"
 
     mkdir -p "$OPENCLAW_HOME"
+    chmod 700 "$OPENCLAW_HOME"
 
-    # Hỏi Telegram token nếu chưa có
+    # --- Telegram token ---
     if [[ -f "$OPENCLAW_ENV" ]] && grep -q "TELEGRAM_BOT_TOKEN" "$OPENCLAW_ENV"; then
         log "Telegram token đã được cấu hình."
     else
@@ -211,7 +215,6 @@ configure_openclaw() {
             err "Token không được để trống."
         fi
 
-        # Ghi vào .env
         {
             echo "# OpenClaw Environment"
             echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_TOKEN"
@@ -222,34 +225,69 @@ configure_openclaw() {
         log "Đã lưu cấu hình vào $OPENCLAW_ENV"
     fi
 
-    # Cấu hình openclaw.json qua CLI (tương thích mọi phiên bản schema)
-    OPENCLAW_CONFIG="$OPENCLAW_HOME/openclaw.json"
-
-    # Xóa config cũ nếu có key lỗi (vd: "llm")
+    # --- Xóa config cũ nếu có key không hợp lệ ---
     if [[ -f "$OPENCLAW_CONFIG" ]] && grep -q '"llm"' "$OPENCLAW_CONFIG"; then
-        warn "Phát hiện config cũ có key không hợp lệ. Đang xóa để tạo lại..."
+        warn "Phát hiện config cũ có key không hợp lệ. Backup và tạo lại..."
         mv "$OPENCLAW_CONFIG" "$OPENCLAW_CONFIG.bak.$(date +%s)"
     fi
 
-    # Tạo config tối thiểu nếu chưa có
+    # --- Tạo config mới nếu chưa có ---
     if [[ ! -f "$OPENCLAW_CONFIG" ]]; then
         echo '{}' > "$OPENCLAW_CONFIG"
+        chmod 600 "$OPENCLAW_CONFIG"
     fi
 
-    info "Cấu hình OpenClaw qua CLI..."
+    # --- Cấu hình qua CLI ---
+    info "Cấu hình OpenClaw..."
 
-    # Gateway mode
+    # Gateway mode (bắt buộc, nếu thiếu gateway sẽ không start)
     openclaw config set gateway.mode local 2>/dev/null || true
 
-    # Telegram channel
+    # Telegram: bật + cho phép mọi người chat (dmPolicy open)
     openclaw config set channels.telegram.enabled true 2>/dev/null || true
+    openclaw config set channels.telegram.dmPolicy open 2>/dev/null || true
+    # allowFrom: ["*"] cần thiết khi dmPolicy=open
+    openclaw config set 'channels.telegram.allowFrom' '["*"]' 2>/dev/null || true
 
-    # Ollama model — dùng `openclaw models set` thay vì config set trực tiếp
-    if command -v ollama &>/dev/null && curl -sf http://127.0.0.1:11434/api/tags &>/dev/null; then
+    # Tắt memory search (không cần embedding provider cho Ollama local)
+    openclaw config set agents.defaults.memorySearch.enabled false 2>/dev/null || true
+
+    # Set model qua openclaw models set
+    if curl -sf http://127.0.0.1:11434/api/tags &>/dev/null; then
         openclaw models set "ollama/$OLLAMA_MODEL" 2>/dev/null || true
-        log "Agent model đã set: ollama/$OLLAMA_MODEL"
+        log "Agent model: ollama/$OLLAMA_MODEL"
     else
         warn "Ollama chưa chạy, bỏ qua set model. Chạy sau: openclaw models set ollama/$OLLAMA_MODEL"
+    fi
+
+    # --- Verify gateway.mode không bị mất ---
+    if ! grep -q '"mode"' "$OPENCLAW_CONFIG" 2>/dev/null; then
+        warn "gateway.mode bị mất sau config set, ghi trực tiếp..."
+        local tmp
+        tmp=$(mktemp)
+        python3 -c "
+import json, sys
+with open('$OPENCLAW_CONFIG') as f:
+    cfg = json.load(f)
+cfg.setdefault('gateway', {})['mode'] = 'local'
+cfg.setdefault('channels', {}).setdefault('telegram', {}).update({
+    'enabled': True,
+    'dmPolicy': 'open',
+    'allowFrom': ['*']
+})
+cfg.setdefault('agents', {}).setdefault('defaults', {}).setdefault('memorySearch', {})['enabled'] = False
+with open('$tmp', 'w') as f:
+    json.dump(cfg, f, indent=2)
+" && mv "$tmp" "$OPENCLAW_CONFIG"
+        chmod 600 "$OPENCLAW_CONFIG"
+        log "Config đã được ghi trực tiếp."
+    fi
+
+    # --- Validate config ---
+    if openclaw config validate &>/dev/null; then
+        log "Config hợp lệ."
+    else
+        warn "Config có thể chưa hoàn chỉnh, nhưng gateway vẫn có thể chạy."
     fi
 
     log "Cấu hình OpenClaw hoàn tất: $OPENCLAW_CONFIG"
@@ -259,8 +297,7 @@ configure_openclaw() {
 #  7. Cấu hình bot đơn giản (fallback nếu không dùng OpenClaw)
 # ============================================================
 setup_local_bot() {
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    LOCAL_ENV="$SCRIPT_DIR/.env"
+    local LOCAL_ENV="$SCRIPT_DIR/.env"
 
     if [[ -f "$LOCAL_ENV" ]] && grep -q "TELEGRAM_BOT_TOKEN" "$LOCAL_ENV"; then
         log "File .env local đã có sẵn."
@@ -303,7 +340,6 @@ setup_local_bot() {
             fi
         fi
 
-        # Kiểm tra activate script thực sự tồn tại
         if [[ ! -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
             err "venv được tạo nhưng thiếu activate script. Hãy xóa $SCRIPT_DIR/.venv và chạy lại."
         fi
@@ -338,20 +374,28 @@ start_services() {
 
     case "$choice" in
         1)
-            info "Khởi động OpenClaw gateway..."
+            info "Khởi động OpenClaw gateway (foreground)..."
+            echo ""
+            echo -e "  ${YELLOW}Nhấn Ctrl+C để dừng gateway${NC}"
+            echo ""
+            # Chạy foreground - ổn định hơn systemd service
             openclaw gateway
             ;;
         2)
-            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
             info "Khởi động bot đơn giản..."
+            # shellcheck disable=SC1091
             source "$SCRIPT_DIR/.venv/bin/activate"
             python "$SCRIPT_DIR/main.py"
             ;;
         3)
             echo ""
             log "Chạy sau bằng:"
-            echo "    openclaw gateway        # OpenClaw gateway"
+            echo "    openclaw gateway        # OpenClaw gateway (foreground)"
             echo "    python main.py          # Bot đơn giản"
+            echo ""
+            echo "  Hoặc cài systemd service:"
+            echo "    openclaw gateway install"
+            echo "    openclaw gateway start"
             ;;
         *)
             warn "Lựa chọn không hợp lệ, thoát."
