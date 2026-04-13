@@ -168,43 +168,57 @@ configure_openclaw() {
         chmod 600 "$OPENCLAW_CONFIG"
     fi
 
-    # --- Cấu hình qua CLI ---
+    # --- Ghi config đầy đủ bằng python3 (tránh lỗi validation từng field) ---
     info "Cấu hình OpenClaw..."
 
-    # Load env để CLI nhận OLLAMA_API_KEY
+    # Load env để gateway nhận OLLAMA_API_KEY
     set -a
     # shellcheck disable=SC1090
     source "$OPENCLAW_ENV"
     set +a
 
-    openclaw config set gateway.mode local                          2>/dev/null || true
-    openclaw config set channels.telegram.enabled true              2>/dev/null || true
-    openclaw config set channels.telegram.dmPolicy open             2>/dev/null || true
-    openclaw config set 'channels.telegram.allowFrom' '["*"]'      2>/dev/null || true
-    openclaw config set agents.defaults.memorySearch.enabled false  2>/dev/null || true
-
-    # Set model
-    openclaw models set "ollama/$OLLAMA_MODEL" 2>/dev/null || true
-    log "Agent model: ollama/$OLLAMA_MODEL"
-
-    # --- Fallback: ghi trực tiếp nếu gateway.mode bị mất ---
-    if ! grep -q '"mode"' "$OPENCLAW_CONFIG" 2>/dev/null; then
-        warn "gateway.mode bị mất, ghi trực tiếp..."
-        python3 -c "
+    python3 -c "
 import json
 with open('$OPENCLAW_CONFIG') as f:
     cfg = json.load(f)
+
+# Gateway
 cfg.setdefault('gateway', {})['mode'] = 'local'
-cfg.setdefault('channels', {}).setdefault('telegram', {}).update({
-    'enabled': True, 'dmPolicy': 'open', 'allowFrom': ['*']
-})
-cfg.setdefault('agents', {}).setdefault('defaults', {}).setdefault('memorySearch', {})['enabled'] = False
+
+# Ollama provider (models array là bắt buộc)
+cfg.setdefault('models', {}).setdefault('providers', {})['ollama'] = {
+    'baseUrl': 'http://127.0.0.1:11434',
+    'apiKey': 'ollama-local',
+    'api': 'ollama',
+    'models': [
+        {
+            'id': '$OLLAMA_MODEL',
+            'name': '$OLLAMA_MODEL',
+            'reasoning': False,
+            'input': ['text'],
+            'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0},
+            'contextWindow': 32768,
+            'maxTokens': 32768
+        }
+    ]
+}
+
+# Agent model
 cfg.setdefault('agents', {}).setdefault('defaults', {})['model'] = {'primary': 'ollama/$OLLAMA_MODEL'}
+cfg['agents']['defaults'].setdefault('memorySearch', {})['enabled'] = False
+
+# Telegram
+cfg.setdefault('channels', {}).setdefault('telegram', {}).update({
+    'enabled': True,
+    'dmPolicy': 'open',
+    'allowFrom': ['*']
+})
+
 with open('$OPENCLAW_CONFIG', 'w') as f:
     json.dump(cfg, f, indent=2)
+print('Config written successfully')
 "
-        chmod 600 "$OPENCLAW_CONFIG"
-    fi
+    chmod 600 "$OPENCLAW_CONFIG"
 
     # Validate
     if openclaw config validate &>/dev/null; then
