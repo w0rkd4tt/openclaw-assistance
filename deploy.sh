@@ -112,7 +112,54 @@ start_ollama_and_pull() {
         log "Ollama server đã chạy sẵn."
     fi
 
-    # Pull model
+    # Liệt kê model đã có
+    EXISTING_MODELS=$(ollama list 2>/dev/null | tail -n +2 | awk '{print $1}' || true)
+
+    if [[ -n "$EXISTING_MODELS" ]]; then
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CYAN}  Model Ollama đã có trên máy:${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        local idx=1
+        local model_list=()
+        while IFS= read -r m; do
+            model_list+=("$m")
+            echo "    $idx) $m"
+            idx=$((idx + 1))
+        done <<< "$EXISTING_MODELS"
+        echo "    $idx) Nhập model khác (sẽ tự pull)"
+        echo ""
+        echo -e "  Model mặc định: ${YELLOW}$OLLAMA_MODEL${NC}"
+        echo ""
+        read -rp "Chọn model [1-$idx, Enter = mặc định]: " model_choice
+
+        if [[ -n "$model_choice" && "$model_choice" =~ ^[0-9]+$ ]]; then
+            if [[ "$model_choice" -ge 1 && "$model_choice" -lt "$idx" ]]; then
+                OLLAMA_MODEL="${model_list[$((model_choice - 1))]}"
+                log "Đã chọn model: $OLLAMA_MODEL"
+            elif [[ "$model_choice" -eq "$idx" ]]; then
+                echo ""
+                echo -e "  ${CYAN}Gợi ý:${NC}"
+                echo "    qwen2.5:32b      (32B, cần ~20GB RAM)"
+                echo "    qwen2.5:14b      (14B, cần ~10GB RAM)"
+                echo "    qwen2.5:7b       (7B,  cần ~5GB RAM)"
+                echo "    llama3:8b        (8B,  cần ~5GB RAM)"
+                echo "    llama3:70b       (70B, cần ~40GB RAM)"
+                echo "    gemma2:9b        (9B,  cần ~6GB RAM)"
+                echo "    mistral:7b       (7B,  cần ~5GB RAM)"
+                echo "    deepseek-r1:14b  (14B, cần ~10GB RAM)"
+                echo "    phi3:14b         (14B, cần ~10GB RAM)"
+                echo ""
+                read -rp "Nhập tên model: " custom_model
+                if [[ -n "$custom_model" ]]; then
+                    OLLAMA_MODEL="$custom_model"
+                fi
+            fi
+        fi
+    fi
+
+    # Pull model nếu chưa có
     if ollama list 2>/dev/null | grep -q "${OLLAMA_MODEL%%:*}"; then
         log "Model $OLLAMA_MODEL đã có sẵn."
     else
