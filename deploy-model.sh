@@ -426,8 +426,66 @@ for f in files:
     print(f)
 " 2>/dev/null || true)
 
+    # Nếu không tìm thấy GGUF → thử thêm suffix -GGUF vào repo
+    if [[ -z "$gguf_files" && "$HF_REPO" != *-GGUF && "$HF_REPO" != *-gguf ]]; then
+        local gguf_repo="${HF_REPO}-GGUF"
+        warn "Không tìm thấy GGUF trong $HF_REPO. Thử $gguf_repo..."
+        gguf_files=$(python3 -c "
+from huggingface_hub import list_repo_files
+files = [f for f in list_repo_files('$gguf_repo') if f.endswith('.gguf')]
+for f in files:
+    print(f)
+" 2>/dev/null || true)
+        if [[ -n "$gguf_files" ]]; then
+            HF_REPO="$gguf_repo"
+            log "Tìm thấy GGUF tại $HF_REPO"
+        fi
+    fi
+
+    # Nếu vẫn không tìm thấy → search repo liên quan
     if [[ -z "$gguf_files" ]]; then
-        err "Không tìm thấy file GGUF nào trong $HF_REPO"
+        warn "Không tìm thấy GGUF. Đang tìm repo liên quan..."
+        local search_term
+        search_term=$(echo "$HF_REPO" | sed 's|.*/||' | sed 's/-GGUF$//')
+        local related
+        related=$(python3 -c "
+from huggingface_hub import HfApi
+api = HfApi()
+results = api.list_models(search='$search_term GGUF', limit=10)
+for r in results:
+    if 'gguf' in r.id.lower() or 'GGUF' in r.id:
+        print(r.id)
+" 2>/dev/null || true)
+
+        if [[ -n "$related" ]]; then
+            echo ""
+            echo -e "  ${CYAN}Repo GGUF liên quan:${NC}"
+            echo ""
+            local ridx=1
+            local repo_list=()
+            while IFS= read -r r; do
+                repo_list+=("$r")
+                printf "    ${BOLD}%d)${NC} %s\n" "$ridx" "$r"
+                ridx=$((ridx + 1))
+            done <<< "$related"
+            echo ""
+            read -rp "  Chọn repo [1-$((ridx-1))]: " rchoice
+
+            if [[ -n "$rchoice" && "$rchoice" =~ ^[0-9]+$ && "$rchoice" -ge 1 && "$rchoice" -lt "$ridx" ]]; then
+                HF_REPO="${repo_list[$((rchoice - 1))]}"
+                gguf_files=$(python3 -c "
+from huggingface_hub import list_repo_files
+files = [f for f in list_repo_files('$HF_REPO') if f.endswith('.gguf')]
+for f in files:
+    print(f)
+" 2>/dev/null || true)
+                log "Đã chọn: $HF_REPO"
+            fi
+        fi
+    fi
+
+    if [[ -z "$gguf_files" ]]; then
+        err "Không tìm thấy file GGUF nào. Hãy kiểm tra tên repo trên huggingface.co"
     fi
 
     echo ""
