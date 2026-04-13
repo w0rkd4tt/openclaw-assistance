@@ -372,11 +372,40 @@ ensure_hf_cli() {
     if command -v huggingface-cli &>/dev/null; then
         return
     fi
+
+    # Kiểm tra nếu đã cài ở user level
+    if python3 -c "import huggingface_hub" 2>/dev/null; then
+        log "huggingface-hub đã cài (python module)."
+        return
+    fi
+
     info "Cài đặt huggingface-hub..."
-    pip install -q huggingface-hub 2>/dev/null \
-        || python3 -m pip install -q huggingface-hub 2>/dev/null \
-        || err "Không cài được huggingface-hub. Hãy chạy: pip install huggingface-hub"
-    log "huggingface-cli sẵn sàng."
+
+    # Thử pipx trước (recommended cho externally-managed)
+    if command -v pipx &>/dev/null; then
+        pipx install huggingface-hub 2>/dev/null && { log "huggingface-cli sẵn sàng (pipx)."; return; }
+    fi
+
+    # Thử pip bình thường
+    if pip install -q huggingface-hub 2>/dev/null; then
+        log "huggingface-cli sẵn sàng."
+        return
+    fi
+
+    # Thử pip --user
+    if pip install -q --user huggingface-hub 2>/dev/null; then
+        export PATH="$HOME/.local/bin:$PATH"
+        log "huggingface-cli sẵn sàng (user install)."
+        return
+    fi
+
+    # Fallback: --break-system-packages (Kali, Debian 12+, Ubuntu 24+)
+    if pip install -q --break-system-packages huggingface-hub 2>/dev/null; then
+        log "huggingface-cli sẵn sàng (break-system-packages)."
+        return
+    fi
+
+    err "Không cài được huggingface-hub. Thử:\n  pipx install huggingface-hub\n  hoặc: pip install --user huggingface-hub"
 }
 
 # ============================================================
