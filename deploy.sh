@@ -180,10 +180,24 @@ configure_openclaw() {
     if [[ ! -f "$OPENCLAW_CONFIG" ]]; then
         cat > "$OPENCLAW_CONFIG" <<JSONEOF
 {
-  "llm": {
-    "provider": "ollama",
-    "model": "$OLLAMA_MODEL",
-    "baseUrl": "http://localhost:11434"
+  "gateway": {
+    "mode": "local"
+  },
+  "models": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://127.0.0.1:11434",
+        "apiKey": "ollama-local",
+        "api": "ollama"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "ollama/$OLLAMA_MODEL"
+      }
+    }
   },
   "channels": {
     "telegram": {
@@ -282,7 +296,7 @@ start_services() {
     case "$choice" in
         1)
             info "Khởi động OpenClaw gateway..."
-            openclaw onboard --install-daemon 2>/dev/null || openclaw start
+            openclaw gateway
             ;;
         2)
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -293,7 +307,7 @@ start_services() {
         3)
             echo ""
             log "Chạy sau bằng:"
-            echo "    openclaw start          # OpenClaw gateway"
+            echo "    openclaw gateway        # OpenClaw gateway"
             echo "    python main.py          # Bot đơn giản"
             ;;
         *)
