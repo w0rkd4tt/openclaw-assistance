@@ -4,7 +4,7 @@ set -euo pipefail
 # ============================================================
 #  OpenClaw + Telegram — Deploy Script
 #  Cài OpenClaw, cấu hình Telegram + Ollama, khởi động gateway
-#  Yêu cầu: Ollama đã cài và đang chạy (dùng deploy-ollama.sh)
+#  Yêu cầu: Ollama đã cài và đang chạy (dùng deploy-model.sh)
 #  Hỗ trợ: macOS (arm64/x86) & Linux (x86_64)
 # ============================================================
 
@@ -68,12 +68,12 @@ check_prerequisites() {
 
     # Ollama
     if ! command -v ollama &>/dev/null; then
-        warn "Ollama chưa cài. Chạy deploy-ollama.sh trước."
-        read -rp "Chạy deploy-ollama.sh ngay? [Y/n]: " run_ollama
+        warn "Ollama chưa cài. Chạy deploy-model.sh trước."
+        read -rp "Chạy deploy-model.sh ngay? [Y/n]: " run_ollama
         if [[ ! "$run_ollama" =~ ^[nN]$ ]]; then
-            bash "$SCRIPT_DIR/deploy-ollama.sh"
+            bash "$SCRIPT_DIR/deploy-model.sh"
         else
-            err "Ollama là bắt buộc. Hãy chạy: ./deploy-ollama.sh"
+            err "Ollama là bắt buộc. Hãy chạy: ./deploy-model.sh"
         fi
     fi
 

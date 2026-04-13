@@ -9,21 +9,27 @@ Có 2 chế độ: **OpenClaw gateway** (đầy đủ tính năng) hoặc **bot 
 # Bước 0: Kiểm tra phần cứng & gợi ý model
 ./check-hardware.sh
 
-# Bước 1a: Deploy Ollama + pull model (từ Ollama registry)
-./deploy-ollama.sh
-
-# Bước 1b: Hoặc import model từ HuggingFace (abliterated, custom, ...)
-./deploy-hf-model.sh
+# Bước 1: Deploy model (tự detect Ollama registry / HuggingFace / local GGUF)
+./deploy-model.sh
 
 # Bước 2: Deploy OpenClaw + Telegram
 ./deploy.sh
 ```
 
-Hoặc chỉ định model:
+Hoặc truyền model trực tiếp (auto detect nguồn):
 
 ```bash
-OLLAMA_MODEL=qwen2.5:14b ./deploy-ollama.sh
-OLLAMA_MODEL=qwen2.5:14b ./deploy.sh
+# Ollama registry
+./deploy-model.sh qwen2.5:14b
+
+# HuggingFace repo
+./deploy-model.sh huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2-GGUF
+
+# HuggingFace URL
+./deploy-model.sh https://huggingface.co/huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2-GGUF
+
+# File GGUF local
+./deploy-model.sh ~/models/model.Q4_K_M.gguf
 ```
 
 ## Deploy Scripts
@@ -31,8 +37,7 @@ OLLAMA_MODEL=qwen2.5:14b ./deploy.sh
 | Script | Mục đích |
 |--------|----------|
 | `check-hardware.sh` | Kiểm tra CPU, RAM, GPU, disk & gợi ý model phù hợp |
-| `deploy-hf-model.sh` | Import model GGUF từ HuggingFace vào Ollama |
-| `deploy-ollama.sh` | Cài Ollama, khởi động server, chọn & pull model |
+| `deploy-model.sh` | Deploy model từ mọi nguồn (Ollama / HuggingFace / GGUF local) |
 | `deploy.sh` | Cài OpenClaw, cấu hình Telegram + Ollama, khởi động gateway |
 
 ### check-hardware.sh
@@ -42,17 +47,20 @@ OLLAMA_MODEL=qwen2.5:14b ./deploy.sh
 - Liệt kê 24 model phổ biến với trạng thái OK/Thiếu RAM
 - Đề xuất model lớn nhất phù hợp với phần cứng
 
-### deploy-ollama.sh
+### deploy-model.sh
 
-- Cài Ollama (brew trên macOS, install script trên Linux)
-- Khởi động Ollama server
-- Liệt kê model đã có, cho phép chọn hoặc nhập model mới
-- Pull model nếu chưa có
-- Test model bằng 1 câu nhanh (tùy chọn)
+- **Auto detect nguồn** từ input: Ollama registry, HuggingFace repo/URL, file GGUF local
+- Cài Ollama nếu chưa có, khởi động server
+- **Ollama registry** → `ollama pull`, nếu fail → tự hỏi chuyển sang HuggingFace
+- **HuggingFace** → list file GGUF, chọn quantization, tải, tạo Modelfile, import Ollama
+- **GGUF local** → scan file trên máy, tạo Modelfile, import Ollama
+- 6 preset abliterated models (Qwen2.5, DeepSeek, Llama3, Mistral)
+- Chọn chat template (ChatML, Llama3, Mistral)
+- Test model + set default cho OpenClaw
 
 ### deploy.sh
 
-- Kiểm tra Ollama đã chạy (tự gọi `deploy-ollama.sh` nếu chưa)
+- Kiểm tra Ollama đã chạy (tự gọi `deploy-model.sh` nếu chưa)
 - Cài Node.js, lsof (Linux)
 - Cài OpenClaw (`npm install -g openclaw`)
 - Hỏi Telegram Bot Token (từ @BotFather)
@@ -62,40 +70,18 @@ OLLAMA_MODEL=qwen2.5:14b ./deploy.sh
 
 ## Dùng custom model từ HuggingFace
 
-Ví dụ dùng [Qwen2.5-14B-Instruct-abliterated-v2](https://huggingface.co/huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2):
-
 ```bash
-# 1. Tải GGUF
-pip install huggingface-hub
-huggingface-cli download huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2-GGUF \
-  qwen2.5-14b-instruct-abliterated-v2.Q4_K_M.gguf \
-  --local-dir ~/models
+# Interactive menu (chọn preset hoặc nhập repo)
+./deploy-model.sh
 
-# 2. Tạo Modelfile
-cat > ~/models/Modelfile <<'EOF'
-FROM ./qwen2.5-14b-instruct-abliterated-v2.Q4_K_M.gguf
-PARAMETER temperature 0.7
-PARAMETER top_p 0.9
-PARAMETER num_ctx 32768
-TEMPLATE """{{- if .System }}<|im_start|>system
-{{ .System }}<|im_end|>
-{{ end }}<|im_start|>user
-{{ .Prompt }}<|im_end|>
-<|im_start|>assistant
-{{ .Response }}<|im_end|>"""
-SYSTEM "Bạn là OpenClaw Assistant, một trợ lý AI thông minh và thân thiện."
-EOF
+# Hoặc truyền repo trực tiếp
+./deploy-model.sh huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2-GGUF
 
-# 3. Tạo model trong Ollama
-cd ~/models && ollama create openclaw-14b -f Modelfile
-
-# 4. Test
-ollama run openclaw-14b "xin chào"
-ollama ps  # Kiểm tra GPU usage
-
-# 5. Set làm default cho OpenClaw
-openclaw models set ollama/openclaw-14b
+# Hoặc URL
+./deploy-model.sh https://huggingface.co/huihui-ai/Qwen2.5-14B-Instruct-abliterated-v2-GGUF
 ```
+
+Script tự động: tải GGUF → chọn quantization → tạo Modelfile → import Ollama → test → set OpenClaw default.
 
 ## Kiến trúc hệ thống
 
@@ -191,8 +177,7 @@ flowchart LR
 ```
 openclaw-assistance/
 ├── check-hardware.sh    # Kiểm tra phần cứng & gợi ý model
-├── deploy-ollama.sh     # Deploy Ollama + model (registry)
-├── deploy-hf-model.sh   # Import model GGUF từ HuggingFace
+├── deploy-model.sh      # Deploy model (Ollama / HuggingFace / GGUF)
 ├── deploy.sh            # Deploy OpenClaw + Telegram
 ├── main.py              # Entry point (bot đơn giản)
 ├── app/
@@ -285,10 +270,8 @@ ollama ps   # Cột PROCESSOR hiện 100% GPU hoặc 100% CPU
 ## Đổi model
 
 ```bash
-# Model từ Ollama registry
-ollama pull qwen2.5:14b
-openclaw models set ollama/qwen2.5:14b
-
-# Model custom từ HuggingFace (xem phần "Dùng custom model" ở trên)
-openclaw models set ollama/openclaw-14b
+# Dùng deploy script (auto detect nguồn)
+./deploy-model.sh qwen2.5:14b                    # Ollama registry
+./deploy-model.sh huihui-ai/Qwen2.5-14B-...-GGUF # HuggingFace
+./deploy-model.sh ~/models/custom.gguf            # File local
 ```
