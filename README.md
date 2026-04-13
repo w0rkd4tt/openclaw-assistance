@@ -9,8 +9,11 @@ Có 2 chế độ: **OpenClaw gateway** (đầy đủ tính năng) hoặc **bot 
 # Bước 0: Kiểm tra phần cứng & gợi ý model
 ./check-hardware.sh
 
-# Bước 1: Deploy Ollama + pull model
+# Bước 1a: Deploy Ollama + pull model (từ Ollama registry)
 ./deploy-ollama.sh
+
+# Bước 1b: Hoặc import model từ HuggingFace (abliterated, custom, ...)
+./deploy-hf-model.sh
 
 # Bước 2: Deploy OpenClaw + Telegram
 ./deploy.sh
@@ -28,6 +31,7 @@ OLLAMA_MODEL=qwen2.5:14b ./deploy.sh
 | Script | Mục đích |
 |--------|----------|
 | `check-hardware.sh` | Kiểm tra CPU, RAM, GPU, disk & gợi ý model phù hợp |
+| `deploy-hf-model.sh` | Import model GGUF từ HuggingFace vào Ollama |
 | `deploy-ollama.sh` | Cài Ollama, khởi động server, chọn & pull model |
 | `deploy.sh` | Cài OpenClaw, cấu hình Telegram + Ollama, khởi động gateway |
 
@@ -187,7 +191,8 @@ flowchart LR
 ```
 openclaw-assistance/
 ├── check-hardware.sh    # Kiểm tra phần cứng & gợi ý model
-├── deploy-ollama.sh     # Deploy Ollama + model
+├── deploy-ollama.sh     # Deploy Ollama + model (registry)
+├── deploy-hf-model.sh   # Import model GGUF từ HuggingFace
 ├── deploy.sh            # Deploy OpenClaw + Telegram
 ├── main.py              # Entry point (bot đơn giản)
 ├── app/
