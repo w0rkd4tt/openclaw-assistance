@@ -175,41 +175,37 @@ configure_openclaw() {
         log "Đã lưu cấu hình vào $OPENCLAW_ENV"
     fi
 
-    # Tạo/cập nhật openclaw.json cho Ollama local
+    # Cấu hình openclaw.json qua CLI (tương thích mọi phiên bản schema)
     OPENCLAW_CONFIG="$OPENCLAW_HOME/openclaw.json"
-    if [[ ! -f "$OPENCLAW_CONFIG" ]]; then
-        cat > "$OPENCLAW_CONFIG" <<JSONEOF
-{
-  "gateway": {
-    "mode": "local"
-  },
-  "models": {
-    "providers": {
-      "ollama": {
-        "baseUrl": "http://127.0.0.1:11434",
-        "apiKey": "ollama-local",
-        "api": "ollama"
-      }
-    }
-  },
-  "agents": {
-    "defaults": {
-      "model": {
-        "primary": "ollama/$OLLAMA_MODEL"
-      }
-    }
-  },
-  "channels": {
-    "telegram": {
-      "enabled": true
-    }
-  }
-}
-JSONEOF
-        log "Đã tạo cấu hình OpenClaw: $OPENCLAW_CONFIG"
-    else
-        log "openclaw.json đã tồn tại, giữ nguyên."
+
+    # Xóa config cũ nếu có key lỗi (vd: "llm")
+    if [[ -f "$OPENCLAW_CONFIG" ]] && grep -q '"llm"' "$OPENCLAW_CONFIG"; then
+        warn "Phát hiện config cũ có key không hợp lệ. Đang xóa để tạo lại..."
+        mv "$OPENCLAW_CONFIG" "$OPENCLAW_CONFIG.bak.$(date +%s)"
     fi
+
+    # Tạo config tối thiểu nếu chưa có
+    if [[ ! -f "$OPENCLAW_CONFIG" ]]; then
+        echo '{}' > "$OPENCLAW_CONFIG"
+    fi
+
+    info "Cấu hình OpenClaw qua CLI..."
+
+    # Gateway mode
+    openclaw config set gateway.mode local 2>/dev/null || true
+
+    # Telegram channel
+    openclaw config set channels.telegram.enabled true 2>/dev/null || true
+
+    # Ollama model — dùng `openclaw models set` thay vì config set trực tiếp
+    if command -v ollama &>/dev/null && curl -sf http://127.0.0.1:11434/api/tags &>/dev/null; then
+        openclaw models set "ollama/$OLLAMA_MODEL" 2>/dev/null || true
+        log "Agent model đã set: ollama/$OLLAMA_MODEL"
+    else
+        warn "Ollama chưa chạy, bỏ qua set model. Chạy sau: openclaw models set ollama/$OLLAMA_MODEL"
+    fi
+
+    log "Cấu hình OpenClaw hoàn tất: $OPENCLAW_CONFIG"
 }
 
 # ============================================================
