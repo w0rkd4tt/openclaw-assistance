@@ -417,25 +417,43 @@ resolve_hf_file() {
 
     ensure_hf_cli
 
-    info "Đang tìm file GGUF trong $HF_REPO..."
-    local gguf_files
-    gguf_files=$(python3 -c "
+    # Hàm list GGUF files từ 1 repo (dùng curl API fallback nếu python không có module)
+    _list_gguf() {
+        local repo="$1"
+        # Thử python trước
+        python3 -c "
 from huggingface_hub import list_repo_files
-files = [f for f in list_repo_files('$HF_REPO') if f.endswith('.gguf')]
+files = [f for f in list_repo_files('$repo') if f.endswith('.gguf')]
 for f in files:
     print(f)
-" 2>/dev/null || true)
+" 2>/dev/null && return
+
+        # Fallback: curl HuggingFace API
+        curl -sf "https://huggingface.co/api/models/$repo" 2>/dev/null \
+            | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for s in data.get('siblings', []):
+    if s.get('rfilename','').endswith('.gguf'):
+        print(s['rfilename'])
+" 2>/dev/null && return
+
+        # Fallback 2: curl + grep (no python needed)
+        curl -sf "https://huggingface.co/api/models/$repo" 2>/dev/null \
+            | grep -oE '"rfilename":"[^"]+\.gguf"' \
+            | sed 's/"rfilename":"//;s/"$//' \
+            || true
+    }
+
+    info "Đang tìm file GGUF trong $HF_REPO..."
+    local gguf_files
+    gguf_files=$(_list_gguf "$HF_REPO")
 
     # Nếu không tìm thấy GGUF → thử thêm suffix -GGUF vào repo
     if [[ -z "$gguf_files" && "$HF_REPO" != *-GGUF && "$HF_REPO" != *-gguf ]]; then
         local gguf_repo="${HF_REPO}-GGUF"
         warn "Không tìm thấy GGUF trong $HF_REPO. Thử $gguf_repo..."
-        gguf_files=$(python3 -c "
-from huggingface_hub import list_repo_files
-files = [f for f in list_repo_files('$gguf_repo') if f.endswith('.gguf')]
-for f in files:
-    print(f)
-" 2>/dev/null || true)
+        gguf_files=$(_list_gguf "$gguf_repo")
         if [[ -n "$gguf_files" ]]; then
             HF_REPO="$gguf_repo"
             log "Tìm thấy GGUF tại $HF_REPO"
@@ -448,14 +466,15 @@ for f in files:
         local search_term
         search_term=$(echo "$HF_REPO" | sed 's|.*/||' | sed 's/-GGUF$//')
         local related
-        related=$(python3 -c "
-from huggingface_hub import HfApi
-api = HfApi()
-results = api.list_models(search='$search_term GGUF', limit=10)
-for r in results:
-    if 'gguf' in r.id.lower() or 'GGUF' in r.id:
-        print(r.id)
-" 2>/dev/null || true)
+        related=$(curl -sf "https://huggingface.co/api/models?search=${search_term}+GGUF&limit=10" 2>/dev/null \
+            | python3 -c "
+import sys, json
+for m in json.load(sys.stdin):
+    mid = m.get('id','')
+    if 'gguf' in mid.lower():
+        print(mid)
+" 2>/dev/null || curl -sf "https://huggingface.co/api/models?search=${search_term}+GGUF&limit=10" 2>/dev/null \
+            | grep -oE '"id":"[^"]+"' | sed 's/"id":"//;s/"$//' | grep -i gguf || true)
 
         if [[ -n "$related" ]]; then
             echo ""
@@ -473,12 +492,7 @@ for r in results:
 
             if [[ -n "$rchoice" && "$rchoice" =~ ^[0-9]+$ && "$rchoice" -ge 1 && "$rchoice" -lt "$ridx" ]]; then
                 HF_REPO="${repo_list[$((rchoice - 1))]}"
-                gguf_files=$(python3 -c "
-from huggingface_hub import list_repo_files
-files = [f for f in list_repo_files('$HF_REPO') if f.endswith('.gguf')]
-for f in files:
-    print(f)
-" 2>/dev/null || true)
+                gguf_files=$(_list_gguf "$HF_REPO")
                 log "Đã chọn: $HF_REPO"
             fi
         fi
