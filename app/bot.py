@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from telegram import Update
 from telegram.ext import (
@@ -37,6 +38,20 @@ async def model_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+async def _keep_typing(chat, stop_event: asyncio.Event):
+    """Gửi typing action liên tục cho đến khi có kết quả."""
+    while not stop_event.is_set():
+        try:
+            await chat.send_action("typing")
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=4)
+            break
+        except asyncio.TimeoutError:
+            continue
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     user_message = update.message.text
@@ -53,22 +68,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         if not is_mentioned and not is_reply_to_bot:
             return
-        # Xóa @mention khỏi tin nhắn
         user_message = user_message.replace(f"@{bot_username}", "").strip()
         if not user_message:
             return
 
-    # Gửi "đang gõ..." trong khi chờ model trả lời
-    await update.message.chat.send_action("typing")
+    # Gửi placeholder trước để tránh timeout
+    placeholder = await update.message.reply_text("⏳ Đang xử lý...")
 
-    reply = await ollama.chat(user_id, user_message)
+    # Typing indicator liên tục trong khi chờ Ollama
+    stop_typing = asyncio.Event()
+    typing_task = asyncio.create_task(
+        _keep_typing(update.message.chat, stop_typing)
+    )
 
-    # Telegram giới hạn 4096 ký tự mỗi tin nhắn
-    if len(reply) <= 4096:
-        await update.message.reply_text(reply)
-    else:
-        for i in range(0, len(reply), 4096):
-            await update.message.reply_text(reply[i : i + 4096])
+    try:
+        reply = await ollama.chat(user_id, user_message)
+    finally:
+        stop_typing.set()
+        await typing_task
+
+    # Sửa placeholder thành câu trả lời
+    try:
+        if len(reply) <= 4096:
+            await placeholder.edit_text(reply)
+        else:
+            await placeholder.edit_text(reply[:4096])
+            for i in range(4096, len(reply), 4096):
+                await update.message.reply_text(reply[i : i + 4096])
+    except Exception as e:
+        logger.error("Lỗi gửi reply: %s", e)
+        try:
+            await update.message.reply_text(reply[:4096])
+        except Exception:
+            pass
 
 
 def create_bot() -> Application:
