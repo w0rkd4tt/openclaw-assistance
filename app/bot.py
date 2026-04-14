@@ -116,5 +116,7 @@ def create_bot() -> Application:
     app.add_handler(CommandHandler("clear", clear))
     app.add_handler(CommandHandler("model", model_info))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Unknown commands cũng gửi đến LLM (ví dụ /skill@bot ...)
+    app.add_handler(MessageHandler(filters.COMMAND, handle_message))
 
     return app
