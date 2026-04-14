@@ -40,6 +40,23 @@ async def model_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     user_message = update.message.text
+    chat_type = update.message.chat.type
+
+    # Trong group: chỉ phản hồi khi được mention hoặc reply
+    if chat_type in ("group", "supergroup"):
+        bot_username = context.bot.username
+        is_mentioned = f"@{bot_username}" in user_message
+        is_reply_to_bot = (
+            update.message.reply_to_message
+            and update.message.reply_to_message.from_user
+            and update.message.reply_to_message.from_user.id == context.bot.id
+        )
+        if not is_mentioned and not is_reply_to_bot:
+            return
+        # Xóa @mention khỏi tin nhắn
+        user_message = user_message.replace(f"@{bot_username}", "").strip()
+        if not user_message:
+            return
 
     # Gửi "đang gõ..." trong khi chờ model trả lời
     await update.message.chat.send_action("typing")
